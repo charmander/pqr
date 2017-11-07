@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 type packageInfo struct {
@@ -80,11 +81,23 @@ func main() {
 	}
 
 	commandArgs := append([]string{"-c", commandText + " \"$@\"", "sh"}, scriptArgs...)
+
+	var commandEnv []string
+
+	// : is impossible to escape in $PATH
+	if !strings.ContainsRune(info.path, ':') {
+		extendPath := filepath.Join(info.path, "node_modules/.bin")
+
+		// There’s no need to check for an empty $PATH here, as sh wouldn’t be found in that case
+		commandEnv = append(os.Environ(), "PATH=" + extendPath + ":" + os.Getenv("PATH"))
+	}
+
 	command := exec.Command("sh", commandArgs...)
 	command.Stdin = os.Stdin
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	command.Dir = info.path
+	command.Env = commandEnv
 	command.Start()
 
 	if err := command.Wait(); err != nil {
