@@ -48,7 +48,7 @@ func showUsage() {
 }
 
 func main() {
-	if (len(os.Args) < 2) {
+	if len(os.Args) < 2 {
 		showUsage()
 		os.Exit(1)
 	}
