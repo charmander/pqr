@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 type packageInfo struct {
@@ -98,9 +100,18 @@ func main() {
 	command.Stderr = os.Stderr
 	command.Dir = info.path
 	command.Env = commandEnv
-	command.Start()
 
-	if err := command.Wait(); err != nil {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt)
+	signal.Notify(signals, syscall.SIGTERM)
+	signal.Notify(signals, os.Kill)
+
+	go func() {
+		<- signals
+		signal.Stop(signals)
+	}()
+
+	if err := command.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Script failed: %s\n", err)
 		os.Exit(1)
 	}
