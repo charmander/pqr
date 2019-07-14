@@ -16,7 +16,7 @@ type packageInfo struct {
 	Scripts map[string]string
 }
 
-func getPackageInfo(searchPath string) (*packageInfo, error) {
+func getPackageInfo(searchPath string) (packageInfo, error) {
 	for {
 		f, err := os.Open(filepath.Join(searchPath, "package.json"))
 
@@ -24,7 +24,7 @@ func getPackageInfo(searchPath string) (*packageInfo, error) {
 			next := filepath.Dir(searchPath)
 
 			if !os.IsNotExist(err) || next == searchPath {
-				return nil, err
+				return packageInfo{}, err
 			}
 
 			searchPath = next
@@ -36,11 +36,10 @@ func getPackageInfo(searchPath string) (*packageInfo, error) {
 		decoder := json.NewDecoder(f)
 		var decoded map[string]*json.RawMessage
 
-		result := new(packageInfo)
-		result.Path = searchPath
+		result := packageInfo{Path: searchPath}
 
 		if err := decoder.Decode(&decoded); err != nil {
-			return nil, err
+			return packageInfo{}, err
 		}
 
 		scripts_json := decoded["scripts"]
@@ -50,7 +49,7 @@ func getPackageInfo(searchPath string) (*packageInfo, error) {
 		}
 
 		if err := json.Unmarshal(*scripts_json, &result.Scripts); err != nil {
-			return nil, err
+			return packageInfo{}, err
 		}
 
 		return result, nil
