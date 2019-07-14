@@ -12,7 +12,7 @@ import (
 )
 
 type packageInfo struct {
-	path string
+	Path string
 	Scripts map[string]string
 }
 
@@ -34,13 +34,25 @@ func getPackageInfo(searchPath string) (*packageInfo, error) {
 		defer f.Close()
 
 		decoder := json.NewDecoder(f)
-		result := new(packageInfo)
+		var decoded map[string]*json.RawMessage
 
-		if err := decoder.Decode(result); err != nil {
+		result := new(packageInfo)
+		result.Path = searchPath
+
+		if err := decoder.Decode(&decoded); err != nil {
 			return nil, err
 		}
 
-		result.path = searchPath
+		scripts_json := decoded["scripts"]
+
+		if scripts_json == nil {
+			return result, nil
+		}
+
+		if err := json.Unmarshal(*scripts_json, &result.Scripts); err != nil {
+			return nil, err
+		}
+
 		return result, nil
 	}
 }
@@ -78,7 +90,7 @@ func main() {
 	commandText, ok := info.Scripts[scriptName]
 
 	if !ok {
-		fmt.Fprintf(os.Stderr, "No script named %s in %s/package.json\n", scriptName, info.path)
+		fmt.Fprintf(os.Stderr, "No script named %s in %s/package.json\n", scriptName, info.Path)
 		os.Exit(1)
 	}
 
@@ -87,8 +99,8 @@ func main() {
 	var commandEnv []string
 
 	// : is impossible to escape in $PATH
-	if !strings.ContainsRune(info.path, ':') {
-		extendPath := filepath.Join(info.path, "node_modules/.bin")
+	if !strings.ContainsRune(info.Path, ':') {
+		extendPath := filepath.Join(info.Path, "node_modules/.bin")
 
 		// There’s no need to check for an empty $PATH here, as sh wouldn’t be found in that case
 		commandEnv = append(os.Environ(), "PATH=" + extendPath + ":" + os.Getenv("PATH"))
@@ -98,7 +110,7 @@ func main() {
 	command.Stdin = os.Stdin
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
-	command.Dir = info.path
+	command.Dir = info.Path
 	command.Env = commandEnv
 
 	signals := make(chan os.Signal, 1)

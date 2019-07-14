@@ -45,11 +45,6 @@ $ go get github.com/charmander/pqr
 - pqr doesn’t include npm’s `node-gyp-bin` in `PATH` (because it doesn’t require npm to exist); find the directory with `npm run env dirname '$(which node-gyp)'` and run <code>PATH=<i>node-gyp-bin</i>:$PATH pqr …</code> for near-compatibility.
 
 
-### Bugs
-
-- If package.json doesn’t contain a `scripts` key, pqr will read any key matching `scripts` case-insensitively ([golang/go#14750][go-14750]).
-
-
 ### Running nested scripts with pqr
 
 Create an npm wrapper that delegates to pqr if its first argument is `run-script` or `run`, and the original npm otherwise; add it to your `PATH` before the original npm.
