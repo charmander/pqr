@@ -93,7 +93,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	commandArgs := append([]string{"-c", commandText + " \"$@\"", "sh"}, scriptArgs...)
+	commandArgs := append([]string{"-c", "--", commandText + " \"$@\"", "sh"}, scriptArgs...)
 
 	var commandEnv []string
 
