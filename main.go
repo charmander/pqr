@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -93,37 +91,32 @@ func main() {
 		os.Exit(1)
 	}
 
-	commandArgs := append([]string{"-c", "--", commandText + " \"$@\"", "sh"}, scriptArgs...)
-
-	var commandEnv []string
+	commandArgs := append([]string{"sh", "-c", "--", commandText + " \"$@\"", "sh"}, scriptArgs...)
 
 	// : is impossible to escape in $PATH
 	if !strings.ContainsRune(info.Path, ':') {
 		extendPath := filepath.Join(info.Path, "node_modules/.bin")
 
-		// There’s no need to check for an empty $PATH here, as sh wouldn’t be found in that case
-		commandEnv = append(os.Environ(), "PATH=" + extendPath + ":" + os.Getenv("PATH"))
+		envPath := os.Getenv("PATH")
+
+		var extendedPath string
+
+		if envPath == "" {
+			extendedPath = extendPath
+		} else {
+			extendedPath = extendPath + ":" + envPath
+		}
+
+		os.Setenv("PATH", extendedPath)
 	}
 
-	command := exec.Command("sh", commandArgs...)
-	command.Stdin = os.Stdin
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	command.Dir = info.Path
-	command.Env = commandEnv
+	err = os.Chdir(info.Path)
 
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt)
-	signal.Notify(signals, syscall.SIGTERM)
-	signal.Notify(signals, os.Kill)
-
-	go func() {
-		<- signals
-		signal.Stop(signals)
-	}()
-
-	if err := command.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Script failed: %s\n", err)
-		os.Exit(1)
+	if err != nil {
+		panic(err)
 	}
+
+	err = syscall.Exec("/bin/sh", commandArgs, os.Environ())
+	fmt.Fprintf(os.Stderr, "exec failed: %s\n", err)
+	os.Exit(1)
 }
