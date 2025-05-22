@@ -2,6 +2,9 @@
 
 Runs package.json scripts without Node and npm overhead.
 
+> [!NOTE]
+> If you have [Deno][] available, `deno task` can do this too.
+
 ```shellsession
 $ time npm run echo test
 
@@ -50,6 +53,7 @@ $ go get github.com/charmander/pqr
 Create an npm wrapper that delegates to pqr if its first argument is `run-script` or `run`, and the original npm otherwise; add it to your `PATH` before the original npm.
 
 
+  [Deno]: https://deno.com/
   [npm-pre-post]: https://github.com/npm/npm/blob/d081cc6c8d73f2aa698aab36605377c95e916224/lib/run-script.js#L158
   [npm-prefix]: https://github.com/npm/npm/blob/d081cc6c8d73f2aa698aab36605377c95e916224/lib/config/find-prefix.js
   [npm-quoting]: https://github.com/npm/npm/blob/d081cc6c8d73f2aa698aab36605377c95e916224/lib/run-script.js#L178
