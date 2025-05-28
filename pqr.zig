@@ -224,7 +224,6 @@ pub fn main() !u8 {
 		return 1;
 	}
 
-	// I'm not sure if it's possible in *any* contrived situations to pass enough arguments for `os.argv.len + 2` to overflow `usize`, especially with `usize` being a pointer-sized type in the current version of Zig. It's definitely never going to happen in practice. Still, checked arithmetic so nobody has to think about it...? `allocSentinel` doesn't seem to do an explicit checked addition itself, but maybe checked arithmetic is always on in that code.
 	const argv = try mem.concatWithSentinel(allocator, ?[*:0]const u8, &.{
 		&.{ "sh", "-c", "--", found_script_, "sh" },
 		os.argv[2..],
