@@ -8,21 +8,21 @@ Runs package.json scripts without Node and npm overhead.
 ```shellsession
 $ time npm run echo test
 
-> @ echo pqr/test
-> echo "test"
+> echo
+> echo test
 
 test
 
-real    0m0.200s
-user    0m0.186s
-sys     0m0.017s
+real    0m0.479s
+user    0m0.249s
+sys     0m0.076s
 
 $ time pqr echo test
 test
 
-real    0m0.001s
-user    0m0.000s
-sys     0m0.001s
+real    0m0.007s
+user    0m0.001s
+sys     0m0.000s
 ```
 
 
