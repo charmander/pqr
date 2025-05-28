@@ -1,0 +1,41 @@
+name: Build
+
+'on':
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Set up Zig
+        uses: mlugg/setup-zig@7dccf5e6d09267c55f815f2db29495f30ba2ebca  # v2.0.1
+        with:
+          version: 0.14.0
+
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: zig build -Drelease -Dcpu=x86_64_v3
+
+      - name: Remove linker version
+        run: objcopy --remove-section=.comment zig-out/bin/pqr
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          path: zig-out/bin/pqr
+          name: pqr
+
+      # Not using the digest output of upload-artifact, since that's post-compression.
+      - name: Attest executable
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: pqr
+          subject-path: zig-out/bin/pqr
