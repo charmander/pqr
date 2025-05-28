@@ -1,3 +1,5 @@
+(**p**ackage **q**uick **r**un)
+
 Runs package.json scripts without Node and npm overhead.
 
 > [!NOTE]
