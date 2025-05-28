@@ -54,7 +54,7 @@ sha256sum --tag /usr/local/bin/pqr  # make sure it's still the same
 
 - pqr requires `sh`; npm will use [`%ComSpec%` or `cmd` on Windows][npm-windows].
 
-- pqr doesn’t include npm’s `node-gyp-bin` in `PATH` (because it doesn’t require npm to exist); find the directory with `npm run env dirname '$(which node-gyp)'` and run <code>PATH=<i>node-gyp-bin</i>:$PATH pqr …</code> for near-compatibility.
+- pqr doesn’t include npm’s `node-gyp-bin` in `PATH` (because it doesn’t require npm to exist); find the directory with `dirname "$(npm run -- env which node-gyp)"` and run <code>PATH=<i>node-gyp-bin</i>:$PATH pqr …</code> for near-compatibility.
 
 - npm provides default definitions for:
 
