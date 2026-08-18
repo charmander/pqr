@@ -5,13 +5,18 @@ const log = std.log;
 const mem = std.mem;
 const os = std.os;
 
+const DirId = packed struct {
+	dev: std.c.dev_t,
+	inode: fs.File.INode,
+};
+
 const Root = union(enum) {
 	/// The working directory, which doesn't need to be closed and is `stat`ed lazily.
 	cwd,
 
 	/// An ancestor of the working directory, which is always `stat`ed.
 	ancestor: struct {
-		inode: fs.File.INode,
+		id: DirId,
 	},
 };
 
@@ -81,6 +86,14 @@ fn isKey(allocator: mem.Allocator, key_token: json.Token, search_key: []const u8
 	};
 }
 
+fn getDirId(dir: fs.Dir) !DirId {
+	const st = try std.posix.fstatatZ(dir.fd, ".", 0);
+	return .{
+		.dev = st.dev,
+		.inode = st.ino,
+	};
+}
+
 pub fn main() !u8 {
 	if (os.argv.len < 2) {
 		try showUsage();
@@ -110,19 +123,19 @@ pub fn main() !u8 {
 		root_dir = undefined;
 
 		// Stop if `/` is reached (`/..` is the same inode as `/`).
-		const previousInode = switch (root) {
-			.cwd => (try fs.cwd().stat()).inode,
-			.ancestor => |d| d.inode,
+		const previousId = switch (root) {
+			.cwd => try getDirId(fs.cwd()),
+			.ancestor => |d| d.id,
 		};
-		const thisInode = (try parent.stat()).inode;
+		const thisId = try getDirId(parent);
 
-		if (thisInode == previousInode) {
+		if (thisId == previousId) {
 			log.err("no package.json found in this directory or any ancestor", .{});
 			return 1;
 		}
 
 		root_dir = parent;
-		root = Root{ .ancestor = .{ .inode = thisInode } };
+		root = Root{ .ancestor = .{ .id = thisId } };
 	};
 
 	switch (root) {
