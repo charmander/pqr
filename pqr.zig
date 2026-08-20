@@ -40,7 +40,7 @@ fn contains(string: []const u8, c: u8) bool {
 	return false;
 }
 
-/// Appends a suffix to a string. Returns a string allocated on `allocator`. Takes ownership of an `allocated` string.
+/// Appends a suffix to a string. Returns a string allocated on `allocator`. Takes ownership of an `owned` string.
 fn appendZ(
 	/// Whether `string` is already allocated on `allocator`, i.e. might be resizable.
 	comptime allocation: enum {
