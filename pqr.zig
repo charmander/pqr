@@ -1,13 +1,14 @@
 const std = @import("std");
-const fs = std.fs;
+const c = @import("c");
 const json = std.json;
 const log = std.log;
 const mem = std.mem;
 const os = std.os;
+const Io = std.Io;
 
 const DirId = packed struct {
-	dev: std.c.dev_t,
-	inode: fs.File.INode,
+	dev: std.posix.dev_t,
+	inode: Io.File.INode,
 };
 
 const Root = union(enum) {
@@ -25,14 +26,14 @@ const args_suffix = " \"$@\"";
 /// An indicator of where allocations are logically freed on a success path. `errdefer` would also be used for these if `main` didn't `return 1` for some errors. (Having a separate `!noreturn` function to clean this up is inconvenient because the error messages use the allocated `cwd_path`.)
 const redundant_free = false;
 
-fn showUsage() !void {
-	try std.io.getStdErr().writer().print("Usage: pqr <command> [<args>...]\n", .{});
+fn showUsage(io: Io) !void {
+	try Io.File.stderr().writeStreamingAll(io, "Usage: pqr <command> [<args>...]\n");
 }
 
 // Is this really not a builtin (in a better form than `mem.containsAtLeastScalar`)?
-fn contains(string: []const u8, c: u8) bool {
+fn contains(string: []const u8, b: u8) bool {
 	for (string) |sc| {
-		if (sc == c) {
+		if (sc == b) {
 			return true;
 		}
 	}
@@ -86,45 +87,55 @@ fn isKey(allocator: mem.Allocator, key_token: json.Token, search_key: []const u8
 	};
 }
 
-fn getDirId(dir: fs.Dir) !DirId {
-	const st = try std.posix.fstatatZ(dir.fd, ".", 0);
-	return .{
-		.dev = st.dev,
-		.inode = st.ino,
+fn getDirId(dir: Io.Dir) !DirId {
+	var st: c.struct_stat = undefined;
+
+	return switch (std.posix.errno(c.fstatat(dir.handle, ".", &st, 0))) {
+		.SUCCESS => .{
+			.dev = st.st_dev,
+			.inode = st.st_ino,
+		},
+		.ACCES => error.AccessDenied,
+		.PERM => error.AccessDenied,
+		else => |err| std.posix.unexpectedErrno(err),
 	};
 }
 
-pub fn main() !u8 {
-	if (os.argv.len < 2) {
-		try showUsage();
+pub fn main(init_minimal: std.process.Init.Minimal) !u8 {
+	const io = Io.Threaded.global_single_threaded.io();
+	const argv = init_minimal.args.vector;
+	const environ = init_minimal.environ;
+
+	if (argv.len < 2) {
+		try showUsage(io);
 		return 1;
 	}
 
-	const script_name: []const u8 = mem.span(os.argv[1]);
+	const script_name: []const u8 = mem.span(argv[1]);
 
 	// Find package.json and make the directory containing it the working directory.
-	var root_dir = fs.cwd();
+	var root_dir = Io.Dir.cwd();
 	var root = Root{ .cwd = {} };
 
 	const package_json = while (true) {
-		if (root_dir.openFile("package.json", .{})) |package_json| {
+		if (root_dir.openFile(io, "package.json", .{})) |package_json| {
 			break package_json;
 		} else |err| if (err != error.FileNotFound) {
 			return err;
 		}
 
-		const parent = try root_dir.openDir("..", .{});
+		const parent = try root_dir.openDir(io, "..", .{});
 
 		// Close the previous root candidate.
 		switch (root) {
 			.cwd => {},
-			.ancestor => root_dir.close(),
+			.ancestor => root_dir.close(io),
 		}
 		root_dir = undefined;
 
 		// Stop if `/` is reached (`/..` is the same inode as `/`).
 		const previousId = switch (root) {
-			.cwd => try getDirId(fs.cwd()),
+			.cwd => try getDirId(Io.Dir.cwd()),
 			.ancestor => |d| d.id,
 		};
 		const thisId = try getDirId(parent);
@@ -141,17 +152,19 @@ pub fn main() !u8 {
 	switch (root) {
 		.cwd => {},
 		.ancestor => {
-			try root_dir.setAsCwd();
-			root_dir.close();
+			try std.process.setCurrentDir(io, root_dir);
+			root_dir.close(io);
 		},
 	}
 
 	var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
 	const allocator = arena.allocator();
 
-	const cwd_path = try std.process.getCwdAlloc(allocator);
+	const cwd_path = try std.process.currentPathAlloc(io, allocator);
 
-	var reader = json.reader(allocator, package_json.reader());
+	var buf: [0x1000]u8 = undefined;
+	var file_reader = package_json.readerStreaming(io, &buf);
+	var reader = json.Reader.init(allocator, &file_reader.interface);
 
 	// TODO: handle `SyntaxError` with a nicer message
 	if (try reader.next() != .object_begin) {
@@ -225,7 +238,7 @@ pub fn main() !u8 {
 	if (redundant_free) {
 		reader.deinit();  // typically no-op with arena allocator: script will always be allocated after JSON stack in success cases
 	}
-	package_json.close();
+	package_json.close(io);
 
 	const found_script_ = found_script orelse {
 		log.err("no script named {s} in {s}/package.json", .{ script_name, cwd_path });
@@ -237,16 +250,16 @@ pub fn main() !u8 {
 		return 1;
 	}
 
-	const argv = try mem.concatWithSentinel(allocator, ?[*:0]const u8, &.{
+	const exec_argv = try mem.concatWithSentinel(allocator, ?[*:0]const u8, &.{
 		&.{ "sh", "-c", "--", found_script_, "sh" },
-		os.argv[2..],
+		argv[2..],
 	}, null);
 
 	const env_path = env_path: {
 		var env_path: ?struct { usize, [:0]const u8 } = null;
 		const prefix = "PATH=";
 
-		for (os.environ, 0..) |entry_nul, i| {
+		for (environ.block.view().slice, 0..) |entry_nul, i| {
 			const entry = mem.span(entry_nul);
 
 			if (mem.startsWith(u8, entry, prefix)) {
@@ -265,10 +278,8 @@ pub fn main() !u8 {
 		return 1;
 	};
 
-	// `os.environ` is null-terminated: https://github.com/ziglang/zig/blob/6d1f0eca773e688c802e441589495b7bde2f9e3f/lib/std/start.zig#L635
 	// Unfortunately, modifying `environ` is undefined behavior under POSIX, so we have to make a copy... I think. It's not worded as precisely as it could be. ("Any application that directly modifies the pointers to which the environ variable points has undefined behavior.")
-	const envp = try allocator.allocSentinel(?[*:0]const u8, os.environ.len, null);
-	@memcpy(envp, os.environ);
+	const envp = try allocator.dupeSentinel(?[*:0]const u8, environ.block.slice, null);
 
 	// `:` is impossible to escape in `PATH`
 	if (!contains(cwd_path, ':')) {
@@ -287,5 +298,27 @@ pub fn main() !u8 {
 	}
 
 	// NOTE: `defer`red things do not run when exec succeeds.
-	return std.posix.execvpeZ("sh", argv, envp);
+	_ = std.posix.system.execve("/bin/sh", exec_argv, envp);
+
+	// see `std.Io.Threaded.posixExecvPath`
+	const err: std.process.ReplaceError = switch (std.posix.errno(-1)) {
+		.@"2BIG" => error.SystemResources,
+		.MFILE => error.ProcessFdQuotaExceeded,
+		.NAMETOOLONG => error.NameTooLong,
+		.NFILE => error.SystemFdQuotaExceeded,
+		.NOMEM => error.SystemResources,
+		.ACCES => error.AccessDenied,
+		.PERM => error.PermissionDenied,
+		.INVAL => error.InvalidExe,
+		.NOEXEC => error.InvalidExe,
+		.IO => error.FileSystem,
+		.LOOP => error.FileSystem,
+		.ISDIR => error.IsDir,
+		.NOENT => error.FileNotFound,
+		.NOTDIR => error.NotDir,
+		.TXTBSY => error.FileBusy,
+		else => |err| std.posix.unexpectedErrno(err),
+	};
+
+	return err;
 }
