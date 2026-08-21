@@ -30,17 +30,6 @@ fn showUsage(io: Io) !void {
 	try Io.File.stderr().writeStreamingAll(io, "Usage: pqr <command> [<args>...]\n");
 }
 
-// Is this really not a builtin (in a better form than `mem.containsAtLeastScalar`)?
-fn contains(string: []const u8, b: u8) bool {
-	for (string) |sc| {
-		if (sc == b) {
-			return true;
-		}
-	}
-
-	return false;
-}
-
 /// Appends a suffix to a string. Returns a string allocated on `allocator`. Takes ownership of an `owned` string.
 fn appendZ(
 	/// Whether `string` is already allocated on `allocator`, i.e. might be resizable.
@@ -245,7 +234,7 @@ pub fn main(init_minimal: std.process.Init.Minimal) !u8 {
 		return 1;
 	};
 
-	if (contains(found_script_, 0)) {
+	if (mem.containsAtLeastScalar2(u8, found_script_, 0, 1)) {
 		log.err("script {s} in {s}/package.json contains NUL", .{ script_name, cwd_path });
 		return 1;
 	}
@@ -282,7 +271,7 @@ pub fn main(init_minimal: std.process.Init.Minimal) !u8 {
 	const envp = try allocator.dupeSentinel(?[*:0]const u8, environ.block.slice, null);
 
 	// `:` is impossible to escape in `PATH`
-	if (!contains(cwd_path, ':')) {
+	if (!mem.containsAtLeastScalar2(u8, cwd_path, ':', 1)) {
 		const path_index, const path_value = env_path;
 		if (path_value.len == 0) {
 			log.err("PATH is empty", .{});
